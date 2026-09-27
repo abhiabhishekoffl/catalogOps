@@ -53,7 +53,7 @@ def test_root():
 
     # Check that the response message is correct
     assert response.json() == {
-        "message": "CatalogOps is running"
+        "message": "CatalogOps is running inside Docker"
     }
 
 

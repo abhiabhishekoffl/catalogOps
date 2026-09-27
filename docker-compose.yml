@@ -1,0 +1,44 @@
+services:
+  catalogops:
+    image: abhiabhishekoffl/catalogops:1.4
+    container_name: catalogops-container
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: catalogops
+      DB_USER: postgres
+
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+    
+  db:
+    image: postgres:18
+    container_name: catalogops-db
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: catalogops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d catalogops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+volumes:
+  postgres_data:

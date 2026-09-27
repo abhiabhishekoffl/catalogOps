@@ -13,7 +13,7 @@ Base.metadata.create_all(bind=engine)
 # Create FastAPI application
 app = FastAPI(
     title="CatalogOps",
-    description="E-commerce Product Catalog Service",
+    description="E-commerce Product Catalog Service - Version 1.5",
     version="1.0.0"
 )
 
@@ -22,7 +22,7 @@ app = FastAPI(
 @app.get("/")
 def root():
     return {
-        "message": "CatalogOps is running"
+        "message": "CatalogOps is running inside Docker"
     }
 
 
