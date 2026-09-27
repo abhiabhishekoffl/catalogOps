@@ -113,3 +113,5 @@ def delete_product(
     return {
         "message": "Product deleted successfully"
     }
+
+# CI/CD automatic trigger test
