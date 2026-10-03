@@ -25,6 +25,10 @@ def root():
         "message": "CatalogOps is running inside Docker"
     }
 
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
 
 # Get all products
 @app.get("/api/v1/products", response_model=list[ProductResponse])

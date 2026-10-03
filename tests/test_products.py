@@ -231,3 +231,9 @@ def test_get_product_not_found():
     assert response.json() == {
         "detail": "Product not found"
     }
+
+def test_health():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
