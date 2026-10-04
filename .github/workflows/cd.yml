@@ -112,9 +112,13 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
               "cd /home/ubuntu/catalogops",
+              "CURRENT_IMAGE=$(docker inspect catalogops-container --format '{{.Config.Image}}')",
+              "echo Current image: $CURRENT_IMAGE",
               "export CATALOGOPS_VERSION='"$VERSION"'",
               "docker compose pull catalogops",
               "docker compose up -d catalogops",
+              "sleep 5",
+              "if curl --fail --silent http://localhost:8000/health > /dev/null; then echo Health check passed; else echo Health check failed - rolling back; docker compose down; export CATALOGOPS_VERSION=$(echo $CURRENT_IMAGE | cut -d: -f2); docker compose up -d catalogops; exit 1; fi",
               "docker image prune -f"
             ]' \
             --query "Command.CommandId" \
