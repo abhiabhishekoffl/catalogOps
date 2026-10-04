@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Docker image version to deploy (e.g. 1.9)"
+        description: "Docker image version to deploy (e.g. 2.3)"
         required: true
         type: string
 
@@ -49,7 +49,7 @@ jobs:
           echo "Initial version: ${VERSION:-not set}"
 
       - name: Download release version
-        if: github.event_name == 'workflow_run' 
+        if: github.event_name == 'workflow_run'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -79,12 +79,20 @@ jobs:
           echo "Deploying version: $VERSION"
 
       - name: Configure AWS credentials
+        if: >
+          (github.event_name == 'workflow_run' &&
+           steps.release_check.outputs.is_release == 'true') ||
+          github.event_name == 'workflow_dispatch'
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::469683586220:role/CatalogOps-GitHub-SSM-Role
           aws-region: us-east-1
 
       - name: Log in to Docker Hub
+        if: >
+          (github.event_name == 'workflow_run' &&
+           steps.release_check.outputs.is_release == 'true') ||
+          github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -113,6 +121,7 @@ jobs:
           (github.event_name == 'workflow_run' &&
            steps.release_check.outputs.is_release == 'true') ||
           github.event_name == 'workflow_dispatch'
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
@@ -122,20 +131,37 @@ jobs:
 
           echo "Deploying Docker image version: $VERSION"
 
+          PARAMETERS=$(jq -n \
+            --arg version "$VERSION" \
+            '{
+              commands: [
+                "cd /home/ubuntu/catalogops",
+
+                "CURRENT_IMAGE=$(docker inspect catalogops-container --format \"{{.Config.Image}}\")",
+                "CURRENT_VERSION=${CURRENT_IMAGE##*:}",
+
+                "echo Current image: $CURRENT_IMAGE",
+                "echo Current version: $CURRENT_VERSION",
+                "echo New version: \($version)",
+
+                "export CATALOGOPS_VERSION=\($version)",
+
+                "if ! docker compose pull catalogops; then echo Docker image pull failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+                "if docker compose up -d --force-recreate catalogops; then echo New container started; else echo New deployment failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+                "sleep 5",
+
+                "if curl --fail --silent http://localhost:8000/health | grep -q \"\\\"status\\\":\\\"healthy\\\"\"; then echo Health check passed; else echo Health check failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+                "docker image prune -f"
+              ]
+            }')
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "cd /home/ubuntu/catalogops",
-              "CURRENT_IMAGE=$(docker inspect catalogops-container --format '{{.Config.Image}}')",
-              "echo Current image: $CURRENT_IMAGE",
-              "export CATALOGOPS_VERSION='"$VERSION"'",
-              "docker compose pull catalogops",
-              "docker compose up -d catalogops",
-              "sleep 5",
-              "if curl --fail --silent http://localhost:8000/health > /dev/null; then echo Health check passed; else echo Health check failed - rolling back; docker compose down; export CATALOGOPS_VERSION=$(echo $CURRENT_IMAGE | cut -d: -f2); docker compose up -d catalogops; exit 1; fi",
-              "docker image prune -f"
-            ]' \
+            --parameters "$PARAMETERS" \
             --query "Command.CommandId" \
             --output text)
 
@@ -153,4 +179,10 @@ jobs:
            steps.release_check.outputs.is_release == 'true') ||
           github.event_name == 'workflow_dispatch'
         run: |
-          curl --fail --retry 5 --retry-delay 5 --connect-timeout 10 http://${{ secrets.EC2_HOST }}/health
+          curl --fail \
+            --retry 5 \
+            --retry-delay 5 \
+            --connect-timeout 10 \
+            http://${{ secrets.EC2_HOST }}/health
+
+          echo "Public health check passed."
