@@ -40,7 +40,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
           else
-            TAG=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+            TAG=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" \
+              | grep '^v' \
+              | sort -V \
+              | tail -n 1 || true)
 
             if [[ "$TAG" == v* ]]; then
               VERSION="${TAG#v}"
