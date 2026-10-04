@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Docker image version to deploy (e.g. 1.7)"
+        description: "Docker image version to deploy (e.g. 1.9)"
         required: true
         type: string
 
@@ -24,6 +24,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
+
     runs-on: ubuntu-latest
 
     steps:
@@ -40,13 +42,31 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
           else
-            VERSION=$(git tag --list "v*" --sort=-version:refname | head -n 1)
-            VERSION="${VERSION#v}"
+            VERSION=""
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Deploying version: ${VERSION:-latest}"
-      
+          echo "Initial version: ${VERSION:-not set}"
+
+      - name: Download release version
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-version
+          path: release-version
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read release version
+        if: github.event_name == 'workflow_run'
+        id: release
+        shell: bash
+        run: |
+          VERSION=$(cat release-version/release-version.txt)
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Deploying version: $VERSION"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -60,35 +80,32 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build Docker image
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'workflow_run'
         run: |
-          if [ -n "${{ steps.version.outputs.version }}" ]; then
-            docker build \
-              -t abhiabhishekoffl/catalogops:${{ steps.version.outputs.version }} \
-              -t abhiabhishekoffl/catalogops:latest \
-              .
-          else
-            docker build \
-              -t abhiabhishekoffl/catalogops:latest \
-              .
-          fi
+          VERSION="${{ steps.release.outputs.version }}"
+
+          docker build \
+            -t abhiabhishekoffl/catalogops:${VERSION} \
+            -t abhiabhishekoffl/catalogops:latest \
+            .
 
       - name: Push Docker image
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'workflow_run'
         run: |
-          if [ -n "${{ steps.version.outputs.version }}" ]; then
-            docker push abhiabhishekoffl/catalogops:${{ steps.version.outputs.version }}
-          fi
+          VERSION="${{ steps.release.outputs.version }}"
 
+          docker push abhiabhishekoffl/catalogops:${VERSION}
           docker push abhiabhishekoffl/catalogops:latest
 
       - name: Deploy to EC2 via SSM
         run: |
-          if [ -n "${{ steps.version.outputs.version }}" ]; then
-            VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
           else
-            VERSION="latest"
+            VERSION="${{ steps.release.outputs.version }}"
           fi
+
+          echo "Deploying Docker image version: $VERSION"
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
