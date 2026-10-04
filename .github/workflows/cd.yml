@@ -17,8 +17,8 @@ jobs:
   docker:
     if: >
       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.conclusion == 'success' &&
-        startsWith(github.event.workflow_run.ref, 'refs/tags/v')) ||
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push') ||
       github.event_name == 'workflow_dispatch'
 
     permissions:
@@ -49,7 +49,8 @@ jobs:
           echo "Initial version: ${VERSION:-not set}"
 
       - name: Download release version
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' 
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: release-version
@@ -57,8 +58,18 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check release artifact
+        id: release_check
+        shell: bash
+        run: |
+          if [ -f "release-version/release-version.txt" ]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Read release version
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         id: release
         shell: bash
         run: |
@@ -80,7 +91,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build Docker image
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         run: |
           VERSION="${{ steps.release.outputs.version }}"
 
@@ -90,7 +101,7 @@ jobs:
             .
 
       - name: Push Docker image
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         run: |
           VERSION="${{ steps.release.outputs.version }}"
 
@@ -98,6 +109,10 @@ jobs:
           docker push abhiabhishekoffl/catalogops:latest
 
       - name: Deploy to EC2 via SSM
+        if: >
+          (github.event_name == 'workflow_run' &&
+           steps.release_check.outputs.is_release == 'true') ||
+          github.event_name == 'workflow_dispatch'
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
@@ -133,5 +148,9 @@ jobs:
           echo "Deployment completed successfully."
 
       - name: Health check
+        if: >
+          (github.event_name == 'workflow_run' &&
+           steps.release_check.outputs.is_release == 'true') ||
+          github.event_name == 'workflow_dispatch'
         run: |
           curl --fail --retry 5 --retry-delay 5 --connect-timeout 10 http://${{ secrets.EC2_HOST }}/health
