@@ -111,7 +111,7 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
-              "cd ~/catalogops",
+              "cd /home/ubuntu/catalogops",
               "export CATALOGOPS_VERSION='"$VERSION"'",
               "docker compose pull catalogops",
               "docker compose up -d catalogops",
