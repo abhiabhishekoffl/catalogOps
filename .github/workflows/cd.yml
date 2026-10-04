@@ -52,6 +52,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Deploying version: ${VERSION:-latest}"
 
+      - name: Debug GitHub identity
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
