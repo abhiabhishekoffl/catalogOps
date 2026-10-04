@@ -56,7 +56,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::469683586220:role/CatalogOps-GitHub-SSM-Role
-          aws-region: ap-south-1
+          aws-region: us-east-1c
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
