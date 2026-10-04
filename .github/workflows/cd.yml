@@ -58,10 +58,27 @@ jobs:
           echo "Branch: ${{ github.ref }}"
           echo "Event: ${{ github.event_name }}"
       
-      - name: Debug OIDC claims
-        uses: github/actions-oidc-debugger@main
-        with:
-          audience: "sts.amazonaws.com"
+           - name: Get OIDC token claims
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+        run: |
+          TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+            | jq -r '.value')
+
+          echo "OIDC token received"
+
+          echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq '{
+            iss,
+            aud,
+            sub,
+            repository,
+            ref,
+            workflow,
+            event_name
+          }'
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
