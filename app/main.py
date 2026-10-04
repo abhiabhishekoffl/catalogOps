@@ -27,7 +27,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "unhealthy"}
+    return {"status": "healthy"}
 
 
 # Get all products
