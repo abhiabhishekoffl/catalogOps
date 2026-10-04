@@ -58,6 +58,11 @@ jobs:
           echo "Branch: ${{ github.ref }}"
           echo "Event: ${{ github.event_name }}"
       
+      - name: Debug OIDC claims
+        uses: github/actions-oidc-debugger@main
+        with:
+          audience: "sts.amazonaws.com"
+      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
