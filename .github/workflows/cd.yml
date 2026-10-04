@@ -21,6 +21,9 @@ jobs:
        github.event.workflow_run.event == 'push') ||
       github.event_name == 'workflow_dispatch'
 
+    permissions:
+      id-token: write
+      contents: read
     runs-on: ubuntu-latest
 
     steps:
@@ -48,6 +51,12 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Deploying version: ${VERSION:-latest}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::469683586220:role/CatalogOps-GitHub-SSM-Role
+          aws-region: ap-south-1
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -78,26 +87,34 @@ jobs:
 
           docker push abhiabhishekoffl/catalogops:latest
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd ~/catalogops
+      - name: Deploy to EC2 via SSM
+        run: |
+          if [ -n "${{ steps.version.outputs.version }}" ]; then
+            VERSION="${{ steps.version.outputs.version }}"
+          else
+            VERSION="latest"
+          fi
 
-            if [ -n "${{ steps.version.outputs.version }}" ]; then
-              export CATALOGOPS_VERSION="${{ steps.version.outputs.version }}"
-              docker compose pull catalogops
-              docker compose up -d catalogops
-            else
-              export CATALOGOPS_VERSION="latest"
-              docker compose pull catalogops
-              docker compose up -d catalogops
-            fi
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "cd ~/catalogops",
+              "export CATALOGOPS_VERSION='"$VERSION"'",
+              "docker compose pull catalogops",
+              "docker compose up -d catalogops",
+              "docker image prune -f"
+            ]' \
+            --query "Command.CommandId" \
+            --output text)
 
-            docker image prune -f
+          echo "SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+
+          echo "Deployment completed successfully."
 
       - name: Health check
         run: |
