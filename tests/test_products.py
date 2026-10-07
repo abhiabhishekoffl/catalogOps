@@ -237,3 +237,9 @@ def test_health():
 
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
+
+def test_version():
+    response = client.get("/version")
+
+    assert response.status_code == 200
+    assert response.json()["app"] == "CatalogOps"    

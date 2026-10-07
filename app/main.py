@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,13 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+@app.get("/version")
+def version():
+    return {
+        "app": "CatalogOps",
+        "version": os.getenv("CATALOGOPS_VERSION", "unknown")
+    }
 
 
 # Get all products
