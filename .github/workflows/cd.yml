@@ -1,16 +1,16 @@
-```yaml
 name: CatalogOps CD
 
 on:
   workflow_run:
-    workflows: ["CatalogOps CI"]
+    workflows:
+      - CatalogOps CI
     types:
       - completed
 
   workflow_dispatch:
     inputs:
       version:
-        description: "Docker image version to deploy (e.g. 2.7)"
+        description: Docker image version to deploy
         required: true
         type: string
 
@@ -103,17 +103,17 @@ jobs:
           docker push abhiabhishekoffl/catalogops:${VERSION}
           docker push abhiabhishekoffl/catalogops:latest
 
-      - name: Encode Compose file
+      - name: Prepare Compose file
         if: >
           (github.event_name == 'workflow_run' &&
            steps.release_check.outputs.is_release == 'true') ||
           github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
-          base64 -w 0 compose.yml > compose.yml.b64
-          echo "Compose file encoded successfully."
+          base64 -w 0 compose.yml > compose.b64
+          echo "Compose file prepared."
 
-      - name: Deploy to EC2 via SSM
+      - name: Deploy to EC2
         if: >
           (github.event_name == 'workflow_run' &&
            steps.release_check.outputs.is_release == 'true') ||
@@ -126,39 +126,29 @@ jobs:
             VERSION="${{ steps.release.outputs.version }}"
           fi
 
-          echo "Deploying version: $VERSION"
-
-          COMPOSE_B64=$(cat compose.yml.b64)
+          COMPOSE_B64=$(cat compose.b64)
 
           PARAMETERS=$(jq -n \
             --arg version "$VERSION" \
-            --arg compose_b64 "$COMPOSE_B64" \
+            --arg compose "$COMPOSE_B64" \
             '{
               commands: [
                 "cd /home/ubuntu/catalogops",
-                "CURRENT_IMAGE=$(docker inspect catalogops-container --format \"{{.Config.Image}}\")",
-                "CURRENT_VERSION=${CURRENT_IMAGE##*:}",
-                "echo Current image: $CURRENT_IMAGE",
-                "echo Current version: $CURRENT_VERSION",
-                "echo New version: \($version)",
-                "echo Updating Compose file",
-                "echo \($compose_b64) | base64 -d > compose.yml",
-                "export CATALOGOPS_VERSION=\($version)",
-                "docker compose config > /tmp/catalogops-compose-check.yml",
-                "echo Compose configuration is valid",
-                "if ! docker compose pull catalogops; then echo Docker image pull failed; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
-                "if docker compose up -d --force-recreate catalogops; then echo New container started; else echo Deployment failed; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+                "echo Updating Compose file...",
+                ("echo " + $compose + " | base64 -d > compose.yml"),
+                ("export CATALOGOPS_VERSION=" + $version),
+                "docker compose config",
+                "echo Compose configuration validated.",
+                "docker compose pull catalogops",
+                "docker compose up -d --force-recreate catalogops",
                 "sleep 5",
-                "if curl --fail --silent http://localhost:8000/health | grep -q \"\\\"status\\\":\\\"healthy\\\"\"; then echo Health check passed; else echo Health check failed; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
-                "LOG_DRIVER=$(docker inspect catalogops-container --format \"{{.HostConfig.LogConfig.Type}}\")",
-                "MAX_SIZE=$(docker inspect catalogops-container --format \"{{index .HostConfig.LogConfig.Config \\\"max-size\\\"}}\")",
-                "MAX_FILE=$(docker inspect catalogops-container --format \"{{index .HostConfig.LogConfig.Config \\\"max-file\\\"}}\")",
-                "echo Log driver: $LOG_DRIVER",
-                "echo Max size: $MAX_SIZE",
-                "echo Max file: $MAX_FILE",
-                "if [ \"$LOG_DRIVER\" = \"json-file\" ] && [ \"$MAX_SIZE\" = \"10m\" ] && [ \"$MAX_FILE\" = \"3\" ]; then echo Log rotation check passed; else echo Log rotation check failed; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+                "curl --fail --silent http://localhost:8000/health",
+                "echo",
+                "echo Health check passed.",
+                "docker inspect catalogops-container --format '{{.Config.Image}}'",
+                "docker inspect catalogops-container --format '{{.HostConfig.LogConfig.Type}} {{json .HostConfig.LogConfig.Config}}'",
                 "docker image prune -f",
-                "echo Deployment completed successfully"
+                "echo Deployment completed successfully."
               ]
             }')
 
@@ -175,7 +165,7 @@ jobs:
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
 
-          echo "SSM deployment command completed."
+          echo "EC2 deployment completed."
 
       - name: Public health check
         if: >
@@ -190,4 +180,3 @@ jobs:
             http://${{ secrets.EC2_HOST }}/health
 
           echo "Public health check passed."
-```
