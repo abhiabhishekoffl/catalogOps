@@ -134,20 +134,37 @@ jobs:
             '{
               commands: [
                 "cd /home/ubuntu/catalogops",
+
+                "CURRENT_IMAGE=$(docker inspect catalogops-container --format \"{{.Config.Image}}\")",
+                "CURRENT_VERSION=${CURRENT_IMAGE##*:}",
+
+                "echo Current image: $CURRENT_IMAGE",
+                "echo Current version: $CURRENT_VERSION",
+                ("echo New version: " + $version),
+
                 "echo Updating Compose file...",
                 ("echo " + $compose + " | base64 -d > compose.yml"),
+
                 ("export CATALOGOPS_VERSION=" + $version),
+
                 "docker compose -f compose.yml config",
-                "echo Compose configuration validated.",
+
+                "echo Pulling new image...",
                 "docker compose -f compose.yml pull catalogops",
+
+                "echo Starting new version...",
                 "docker compose -f compose.yml up -d --force-recreate catalogops",
+
                 "sleep 5",
-                "curl --fail --silent http://localhost:8000/health",
-                "echo",
-                "echo Health check passed.",
+
+                "echo Running health check...",
+                "if curl --fail --silent http://localhost:8000/health | grep -q '\"status\":\"healthy\"'; then echo Health check passed; else echo Health check FAILED; echo Rolling back to $CURRENT_VERSION; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose -f compose.yml pull catalogops; docker compose -f compose.yml up -d --force-recreate catalogops; sleep 5; curl --fail --silent http://localhost:8000/health; echo; echo Rollback completed; exit 1; fi",
+
                 "docker inspect catalogops-container --format '{{.Config.Image}}'",
                 "docker inspect catalogops-container --format '{{.HostConfig.LogConfig.Type}}'",
+
                 "docker image prune -f",
+
                 "echo Deployment completed successfully."
               ]
             }')
@@ -165,7 +182,7 @@ jobs:
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
 
-          echo "EC2 deployment completed."
+          echo "EC2 deployment command completed."
 
       - name: Public health check
         if: >
