@@ -158,7 +158,7 @@ jobs:
                 "sleep 5",
 
                 "echo Running health check...",
-                ("if curl --fail --silent http://localhost:8000/health | grep -q " + "{\"status\":\"healthy\"}" + "; then echo Health check passed; else echo Health check FAILED; echo Rolling back to $CURRENT_VERSION; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose -f compose.yml pull catalogops; docker compose -f compose.yml up -d --force-recreate catalogops; sleep 5; curl --fail --silent http://localhost:8000/health; echo; echo Rollback completed; exit 1; fi"),
+                ("if curl --fail --silent http://localhost:8000/health | grep -Eq '\"status\"[[:space:]]*:[[:space:]]*\"healthy\"'; then echo Health check passed; else echo Health check FAILED; echo Rolling back to $CURRENT_VERSION; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose -f compose.yml pull catalogops; docker compose -f compose.yml up -d --force-recreate catalogops; sleep 5; curl --fail --silent http://localhost:8000/health; echo; echo Rollback completed; exit 1; fi"),
 
                 "docker inspect catalogops-container --format '{{.Config.Image}}'",
                 "docker inspect catalogops-container --format '{{.HostConfig.LogConfig.Type}}'",
@@ -190,17 +190,17 @@ jobs:
               --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
               --query "StandardOutputContent" \
               --output text
-          
+
             echo "===== SSM STANDARD ERROR ====="
             aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
               --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
               --query "StandardErrorContent" \
               --output text
-          
+
             exit 1
           fi
-          
+
       - name: Public health check
         if: >
           (github.event_name == 'workflow_run' &&
