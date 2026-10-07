@@ -146,7 +146,7 @@ jobs:
                 "echo",
                 "echo Health check passed.",
                 "docker inspect catalogops-container --format '{{.Config.Image}}'",
-                "docker inspect catalogops-container --format '{{.HostConfig.LogConfig.Type}} {{json .HostConfig.LogConfig.Config}}'",
+                "docker inspect catalogops-container --format '{{.HostConfig.LogConfig.Type}}'",
                 "docker image prune -f",
                 "echo Deployment completed successfully."
               ]
