@@ -1,3 +1,4 @@
+```yaml
 name: CatalogOps CD
 
 on:
@@ -9,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Docker image version to deploy (e.g. 2.3)"
+        description: "Docker image version to deploy (e.g. 2.7)"
         required: true
         type: string
 
@@ -29,12 +30,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # --------------------------------------------------
+      # 1. Checkout repository
+      # --------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
           fetch-depth: 0
 
+
+      # --------------------------------------------------
+      # 2. Get version for manual deployment
+      # --------------------------------------------------
       - name: Get version
         id: version
         shell: bash
@@ -48,6 +57,10 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Initial version: ${VERSION:-not set}"
 
+
+      # --------------------------------------------------
+      # 3. Download release version artifact
+      # --------------------------------------------------
       - name: Download release version
         if: github.event_name == 'workflow_run'
         continue-on-error: true
@@ -58,6 +71,10 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+
+      # --------------------------------------------------
+      # 4. Check whether this is a release
+      # --------------------------------------------------
       - name: Check release artifact
         id: release_check
         shell: bash
@@ -68,6 +85,10 @@ jobs:
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
+
+      # --------------------------------------------------
+      # 5. Read release version
+      # --------------------------------------------------
       - name: Read release version
         if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         id: release
@@ -78,6 +99,28 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Deploying version: $VERSION"
 
+
+      # --------------------------------------------------
+      # 6. Encode compose.yml
+      #
+      # This allows GitHub Actions to transfer the
+      # Compose file to EC2 through SSM.
+      # --------------------------------------------------
+      - name: Encode Compose file
+        if: >
+          (github.event_name == 'workflow_run' &&
+           steps.release_check.outputs.is_release == 'true') ||
+          github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          base64 -w 0 compose.yml > compose.yml.b64
+
+          echo "Compose file encoded successfully."
+
+
+      # --------------------------------------------------
+      # 7. Configure AWS credentials
+      # --------------------------------------------------
       - name: Configure AWS credentials
         if: >
           (github.event_name == 'workflow_run' &&
@@ -88,6 +131,10 @@ jobs:
           role-to-assume: arn:aws:iam::469683586220:role/CatalogOps-GitHub-SSM-Role
           aws-region: us-east-1
 
+
+      # --------------------------------------------------
+      # 8. Login to Docker Hub
+      # --------------------------------------------------
       - name: Log in to Docker Hub
         if: >
           (github.event_name == 'workflow_run' &&
@@ -98,6 +145,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+
+      # --------------------------------------------------
+      # 9. Build Docker image
+      #
+      # Only release tags build a new image.
+      # Manual deployment reuses an existing image.
+      # --------------------------------------------------
       - name: Build Docker image
         if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         run: |
@@ -108,6 +162,10 @@ jobs:
             -t abhiabhishekoffl/catalogops:latest \
             .
 
+
+      # --------------------------------------------------
+      # 10. Push Docker image
+      # --------------------------------------------------
       - name: Push Docker image
         if: github.event_name == 'workflow_run' && steps.release_check.outputs.is_release == 'true'
         run: |
@@ -116,6 +174,10 @@ jobs:
           docker push abhiabhishekoffl/catalogops:${VERSION}
           docker push abhiabhishekoffl/catalogops:latest
 
+
+      # --------------------------------------------------
+      # 11. Deploy to EC2 through SSM
+      # --------------------------------------------------
       - name: Deploy to EC2 via SSM
         if: >
           (github.event_name == 'workflow_run' &&
@@ -123,6 +185,10 @@ jobs:
           github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
+
+          # ----------------------------------------------
+          # Determine version
+          # ----------------------------------------------
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
           else
@@ -131,33 +197,104 @@ jobs:
 
           echo "Deploying Docker image version: $VERSION"
 
+
+          # ----------------------------------------------
+          # Read encoded compose file
+          # ----------------------------------------------
+          COMPOSE_B64=$(cat compose.yml.b64)
+
+
+          # ----------------------------------------------
+          # Create SSM command parameters
+          # ----------------------------------------------
           PARAMETERS=$(jq -n \
             --arg version "$VERSION" \
+            --arg compose_b64 "$COMPOSE_B64" \
             '{
               commands: [
+
                 "cd /home/ubuntu/catalogops",
 
+                "echo Starting CatalogOps deployment...",
+
                 "CURRENT_IMAGE=$(docker inspect catalogops-container --format \"{{.Config.Image}}\")",
+
                 "CURRENT_VERSION=${CURRENT_IMAGE##*:}",
 
                 "echo Current image: $CURRENT_IMAGE",
+
                 "echo Current version: $CURRENT_VERSION",
+
                 "echo New version: \($version)",
+
+
+                "echo Updating Compose file...",
+
+                "echo \($compose_b64) | base64 -d > compose.yml",
+
+                "echo Compose file updated successfully.",
+
+
+                "echo Validating Compose configuration...",
 
                 "export CATALOGOPS_VERSION=\($version)",
 
+                "docker compose config > /tmp/catalogops-compose-check.yml",
+
+                "echo Compose configuration is valid.",
+
+
+                "echo Pulling Docker image...",
+
                 "if ! docker compose pull catalogops; then echo Docker image pull failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
 
-                "if docker compose up -d --force-recreate catalogops; then echo New container started; else echo New deployment failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+                "echo Starting new container...",
+
+                "if docker compose up -d --force-recreate catalogops; then echo New container started successfully; else echo New deployment failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+
+                "echo Waiting for application...",
 
                 "sleep 5",
 
+
+                "echo Running health check...",
+
                 "if curl --fail --silent http://localhost:8000/health | grep -q \"\\\"status\\\":\\\"healthy\\\"\"; then echo Health check passed; else echo Health check failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
 
-                "docker image prune -f"
+
+                "echo Checking Docker log rotation...",
+
+                "LOG_DRIVER=$(docker inspect catalogops-container --format \"{{.HostConfig.LogConfig.Type}}\")",
+
+                "MAX_SIZE=$(docker inspect catalogops-container --format \"{{index .HostConfig.LogConfig.Config \\\"max-size\\\"}}\")",
+
+                "MAX_FILE=$(docker inspect catalogops-container --format \"{{index .HostConfig.LogConfig.Config \\\"max-file\\\"}}\")",
+
+                "echo Log driver: $LOG_DRIVER",
+
+                "echo Max size: $MAX_SIZE",
+
+                "echo Max file: $MAX_FILE",
+
+
+                "if [ \"$LOG_DRIVER\" = \"json-file\" ] && [ \"$MAX_SIZE\" = \"10m\" ] && [ \"$MAX_FILE\" = \"3\" ]; then echo Docker log rotation check passed; else echo Docker log rotation check failed - rolling back; export CATALOGOPS_VERSION=$CURRENT_VERSION; docker compose up -d --force-recreate catalogops; exit 1; fi",
+
+
+                "echo Cleaning unused Docker images...",
+
+                "docker image prune -f",
+
+
+                "echo Deployment completed successfully."
               ]
             }')
 
+
+          # ----------------------------------------------
+          # Send SSM command
+          # ----------------------------------------------
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
@@ -165,20 +302,31 @@ jobs:
             --query "Command.CommandId" \
             --output text)
 
+
           echo "SSM Command ID: $COMMAND_ID"
 
+
+          # ----------------------------------------------
+          # Wait for SSM command
+          # ----------------------------------------------
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
 
-          echo "Deployment completed successfully."
 
+          echo "EC2 deployment command completed."
+
+
+      # --------------------------------------------------
+      # 12. Public health check
+      # --------------------------------------------------
       - name: Health check
         if: >
           (github.event_name == 'workflow_run' &&
            steps.release_check.outputs.is_release == 'true') ||
           github.event_name == 'workflow_dispatch'
         run: |
+
           curl --fail \
             --retry 5 \
             --retry-delay 5 \
@@ -186,3 +334,4 @@ jobs:
             http://${{ secrets.EC2_HOST }}/health
 
           echo "Public health check passed."
+```

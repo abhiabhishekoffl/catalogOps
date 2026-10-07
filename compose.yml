@@ -1,6 +1,6 @@
 services:
   catalogops:
-    image: abhiabhishekoffl/catalogops:1.4
+    image: abhiabhishekoffl/catalogops:${CATALOGOPS_VERSION:-latest}
     container_name: catalogops-container
 
     restart: unless-stopped
