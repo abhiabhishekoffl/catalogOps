@@ -17,6 +17,7 @@ services:
       DB_PORT: 5432
       DB_NAME: catalogops
       DB_USER: postgres
+      CATALOGOPS_VERSION: ${CATALOGOPS_VERSION:-unknown}
 
     ports:
       - "8000:8000"
