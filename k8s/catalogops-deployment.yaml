@@ -1,0 +1,86 @@
+
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: catalogops
+  labels:
+    app: catalogops
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: catalogops
+
+  template:
+    metadata:
+      labels:
+        app: catalogops
+
+    spec:
+      containers:
+        - name: catalogops
+          image: abhiabhishekoffl/catalogops:3.8
+
+          ports:
+            - containerPort: 8000
+
+          # CPU and memory requests and limits
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # Startup Probe
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+
+          # Liveness Probe
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # Readiness Probe
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # Database configuration
+          env:
+            - name: DB_HOST
+              value: postgres
+
+            - name: DB_PORT
+              value: "5432"
+
+            - name: DB_NAME
+              value: catalogops
+
+            - name: DB_USER
+              value: postgres
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: catalogops-db-secret
+                  key: DB_PASSWORD  
