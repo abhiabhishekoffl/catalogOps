@@ -19,3 +19,7 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local database backups
+catalogops-before-pvc.sql
+catalogops-before-pvc-utf8.sql
