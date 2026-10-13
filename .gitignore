@@ -23,3 +23,7 @@ Thumbs.db
 # Local database backups
 catalogops-before-pvc.sql
 catalogops-before-pvc-utf8.sql
+
+catalogops-products-backup.sql
+
+catalogops-products-backup.csv

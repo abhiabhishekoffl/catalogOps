@@ -22,7 +22,10 @@ DATABASE_URL = (
 )
 
 # Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+)
 
 # Create database session
 SessionLocal = sessionmaker(
