@@ -2,8 +2,7 @@
 
 
 
-A production-oriented Product Catalog REST API built with Python, FastAPI, PostgreSQL, SQLAlchemy, and Pytest.
-
+A production-oriented Product Catalog REST API built with Python, FastAPI, PostgreSQL, SQLAlchemy, and Pytest. CatalogOps provides a structured and scalable backend for managing product information through RESTful API endpoints.
 
 
 \## Features
