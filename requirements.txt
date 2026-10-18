@@ -3,21 +3,3 @@ uvicorn==0.53.0
 SQLAlchemy==2.0.54
 psycopg2-binary==2.9.13
 python-dotenv==1.2.3
-
-
-
-
-# Web framework
-fastapi==0.141.1
-
-# ASGI server
-uvicorn==0.53.0
-
-# ORM (Object-Relational Mapper)
-SQLAlchemy==2.0.54
-
-# PostgreSQL database driver
-psycopg2-binary==2.9.13
-
-# Environment variable management
-python-dotenv==1.2.3
