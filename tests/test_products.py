@@ -243,3 +243,18 @@ def test_version():
 
     assert response.status_code == 200
     assert response.json()["app"] == "CatalogOps"    
+
+# Test the liveness endpoint
+def test_health_live():
+    response = client.get("/health/live")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
+
+# Test the readiness endpoint when the database is available
+def test_health_ready():
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+

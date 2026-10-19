@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.database.database import Base, engine, get_db
 from app.models.product import Product
@@ -30,6 +31,25 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+@app.get("/health/live")
+def liveness():
+    return {"status": "alive"}
+
+@app.get("/health/ready")
+def readiness():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+
+        return {"status": "ready"}
+
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable"
+        )
+
 
 @app.get("/version")
 def version():
