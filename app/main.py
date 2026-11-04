@@ -12,7 +12,6 @@ from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 # Create the database tables
 Base.metadata.create_all(bind=engine)
 
-
 # Create FastAPI application
 app = FastAPI(
     title="CatalogOps",

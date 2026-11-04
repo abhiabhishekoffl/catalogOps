@@ -1,0 +1,19 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "catalogops",
+            "readinessProbe": {
+              "httpGet": {
+                "path": "/health/ready",
+                "port": 8000
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

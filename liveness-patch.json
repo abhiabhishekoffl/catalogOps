@@ -1,0 +1,20 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "catalogops",
+            "livenessProbe": {
+              "httpGet": {
+                "path": "/health/live",
+                "port": 8000
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+

@@ -27,3 +27,8 @@ catalogops-before-pvc-utf8.sql
 catalogops-products-backup.sql
 
 catalogops-products-backup.csv
+
+# PostgreSQL backup files
+backups/
+*.dump
+*.backup
