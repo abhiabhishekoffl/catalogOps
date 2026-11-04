@@ -32,3 +32,17 @@ catalogops-products-backup.csv
 backups/
 *.dump
 *.backup
+
+
+# Frontend dependencies
+frontend/node_modules/
+
+# Frontend production build
+frontend/dist/
+
+# Vite cache
+frontend/.vite/
+
+# Frontend environment variables
+frontend/.env
+frontend/.env.*

@@ -1,16 +1,19 @@
+
 import os
 
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 
 from app.database.database import Base, engine, get_db
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 
 
-# Create the database tables
+# Create database tables
 Base.metadata.create_all(bind=engine)
+
 
 # Create FastAPI application
 app = FastAPI(
@@ -20,20 +23,46 @@ app = FastAPI(
 )
 
 
+# Configure CORS
+frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+production_origins = os.getenv("FRONTEND_ORIGINS", "")
+
+if production_origins:
+    frontend_origins.extend(
+        origin.strip()
+        for origin in production_origins.split(",")
+        if origin.strip()
+    )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=frontend_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Root endpoint
 @app.get("/")
 def root():
-    return {
-        "message": "CatalogOps is running inside Docker"
-    }
+    return {"message": "CatalogOps is running"}
 
+
+# Health endpoints
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
+
 @app.get("/health/live")
 def liveness():
     return {"status": "alive"}
+
 
 @app.get("/health/ready")
 def readiness():
@@ -50,6 +79,7 @@ def readiness():
         )
 
 
+# Version endpoint
 @app.get("/version")
 def version():
     return {
@@ -61,44 +91,78 @@ def version():
 # Get all products
 @app.get("/api/v1/products", response_model=list[ProductResponse])
 def get_products(db: Session = Depends(get_db)):
-    products = db.query(Product).all()
+    return db.query(Product).all()
 
-    return products
 
-# Get a single product by ID
+# Dashboard analytics endpoint
+@app.get("/api/v1/dashboard/summary")
+def dashboard_summary(db: Session = Depends(get_db)):
+
+    total_products = db.query(
+        func.count(Product.id)
+    ).scalar() or 0
+
+    total_categories = db.query(
+        func.count(func.distinct(Product.category))
+    ).scalar() or 0
+
+    total_value = db.query(
+        func.sum(Product.price)
+    ).scalar() or 0
+
+    average_price = db.query(
+        func.avg(Product.price)
+    ).scalar() or 0
+
+    category_data = (
+        db.query(
+            Product.category,
+            func.count(Product.id).label("product_count")
+        )
+        .group_by(Product.category)
+        .all()
+    )
+
+    recent_products = (
+        db.query(Product)
+        .order_by(Product.id.desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "total_products": total_products,
+        "total_categories": total_categories,
+        "total_catalog_value": round(float(total_value), 2),
+        "average_price": round(float(average_price), 2),
+        "products_by_category": [
+            {
+                "category": category,
+                "count": count
+            }
+            for category, count in category_data
+        ],
+        "recent_products": [
+            {
+                "id": product.id,
+                "name": product.name,
+                "category": product.category,
+                "price": product.price
+            }
+            for product in recent_products
+        ]
+    }
+
+
+# Get one product
 @app.get("/api/v1/products/{product_id}", response_model=ProductResponse)
 def get_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
 
     if product is None:
-        raise HTTPException(
-            status_code=404, 
-            detail="Product not found"
-        )
-
-    return product
-
-# Update an existing product
-@app.put("/api/v1/products/{product_id}", response_model=ProductResponse)
-def update_product(
-    product_id: int,
-    product_data: ProductUpdate,
-    db:Session = Depends(get_db)
-):
-    product = db.query(Product).filter(Product.id == product_id).first()
-
-    if product is None:
-        raise HTTPException(
-            status_code=404, 
-            detail="Product not found"
-        )
-
-    product.name = product_data.name
-    product.category = product_data.category
-    product.price = product_data.price
-
-    db.commit()
-    db.refresh(product)
+        raise HTTPException(status_code=404, detail="Product not found")
 
     return product
 
@@ -121,29 +185,45 @@ def create_product(
 
     return new_product
 
-# Delete a product
+
+# Update product
+@app.put("/api/v1/products/{product_id}", response_model=ProductResponse)
+def update_product(
+    product_id: int,
+    product_data: ProductUpdate,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.name = product_data.name
+    product.category = product_data.category
+    product.price = product_data.price
+
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+
+# Delete product
 @app.delete("/api/v1/products/{product_id}")
 def delete_product(
     product_id: int,
     db: Session = Depends(get_db)
 ):
-    #Find the product by ID
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
 
-    #If the product does not exist, raise a 404 error
     if product is None:
-        raise HTTPException(
-            status_code=404, 
-            detail="Product not found"
-        )
+        raise HTTPException(status_code=404, detail="Product not found")
 
-    # Delete the product from the database
     db.delete(product)
     db.commit()
 
-    # Return a success message
-    return {
-        "message": "Product deleted successfully"
-    }
-
-# CI/CD automatic trigger test
+    return {"message": "Product deleted successfully"}
