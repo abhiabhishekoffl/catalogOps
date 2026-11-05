@@ -647,4 +647,6 @@ No `LICENSE` file is currently included in this repository. Until a license is a
 
 Built with ❤️ using FastAPI, React, and PostgreSQL
 
+**Author:** [Apna Naam](https://github.com/abhiabhishekoffl)
+
 </div>
